@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pase de Lista</title>
+    <title>Pase de Lista Mejorado</title>
     <style>
         * {
             margin: 0;
@@ -279,8 +279,8 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>📋 Pase de Lista</h1>
-            <p>Sistema de Control de Asistencia</p>
+            <h1>📋 Pase de Lista Mejorado</h1>
+            <p>Sistema de Control de Asistencia y Adeudos</p>
         </div>
 
         <div class="tabs">
@@ -318,6 +318,7 @@
             
             <button class="btn btn-primary" onclick="startAttendance()">📝 Iniciar Pase de Lista</button>
             <button class="btn btn-info" onclick="shareAttendance()">📤 Compartir por WhatsApp</button>
+            <button class="btn btn-danger" onclick="finishAttendance()">🏁 Finalizar Lista</button>
             
             <div id="attendanceList">
                 <!-- Lista de asistencia se carga aquí -->
@@ -355,38 +356,36 @@
     </div>
 
     <script>
-        // Variables globales
+        // Variables globales mejoradas
         let people = JSON.parse(localStorage.getItem('people') || '[]');
-        let attendanceHistory = JSON.parse(localStorage.getItem('attendanceHistory') || '[]');
-        let currentAttendance = {};
+        let attendanceHistory = JSON.parse(localStorage.getItem('attendanceHistory') || [];
+        let currentAttendance = null; // Cambiado de {} a null para mejor control
         let weeklyPermissions = JSON.parse(localStorage.getItem('weeklyPermissions') || '{}');
 
-        // Funciones de utilidad
+        // Funciones de utilidad mejoradas
         function saveData() {
             localStorage.setItem('people', JSON.stringify(people));
             localStorage.setItem('attendanceHistory', JSON.stringify(attendanceHistory));
             localStorage.setItem('weeklyPermissions', JSON.stringify(weeklyPermissions));
         }
 
+        // Función de semana ISO mejorada
         function getCurrentWeek() {
-    const date = new Date();
-    date.setHours(0, 0, 0, 0);
-    // Thursday in current week decides the year (ISO 8601)
-    date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
-    // January 4 is always in week 1
-    const week1 = new Date(date.getFullYear(), 0, 4);
-    // Adjust to Thursday in week 1 and count number of weeks
-    const weekNumber = 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
-    
-    return `${date.getFullYear()}-W${weekNumber.toString().padStart(2, '0')}`;
+            const date = new Date();
+            date.setHours(0, 0, 0, 0);
+            date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
+            const week1 = new Date(date.getFullYear(), 0, 4);
+            const weekNumber = 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+            
+            return `${date.getFullYear()}-W${weekNumber.toString().padStart(2, '0')}`;
         }
 
         function getCurrentDate() {
-            return new Date().toLocaleDateString('es-ES');
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            return new Date().toLocaleDateString('es-ES', options);
         }
 
         function showTab(tabName) {
-            // Ocultar todos los tabs
             document.querySelectorAll('.tab-content').forEach(tab => {
                 tab.classList.remove('active');
             });
@@ -394,11 +393,9 @@
                 tab.classList.remove('active');
             });
 
-            // Mostrar tab seleccionado
             document.getElementById(tabName).classList.add('active');
             event.target.classList.add('active');
 
-            // Actualizar contenido según el tab
             switch(tabName) {
                 case 'manage':
                     loadPeopleList();
@@ -439,12 +436,15 @@
             saveData();
             nameInput.value = '';
             loadPeopleList();
-            alert('Persona agregada exitosamente');
         }
 
         function removePerson(id) {
-            if (confirm('¿Estás seguro de eliminar esta persona?')) {
+            if (confirm('¿Estás seguro de eliminar esta persona y todos sus registros?')) {
                 people = people.filter(person => person.id !== id);
+                attendanceHistory = attendanceHistory.map(record => {
+                    delete record.records[id];
+                    return record;
+                });
                 saveData();
                 loadPeopleList();
             }
@@ -468,11 +468,17 @@
             `).join('');
         }
 
-        // Pase de asistencia
+        // Pase de asistencia mejorado
         function startAttendance() {
             if (people.length === 0) {
                 alert('Primero debes agregar personas a la lista');
                 return;
+            }
+
+            if (currentAttendance && Object.keys(currentAttendance.records).length > 0) {
+                if (!confirm('Hay un pase de lista en progreso. ¿Deseas iniciar uno nuevo?')) {
+                    return;
+                }
             }
 
             currentAttendance = {
@@ -487,11 +493,22 @@
             loadAttendanceList();
         }
 
+        function finishAttendance() {
+            if (!currentAttendance || Object.keys(currentAttendance.records).length === 0) {
+                alert('No hay pase de lista activo para finalizar');
+                return;
+            }
+            
+            if (confirm('¿Finalizar el pase de lista actual?')) {
+                currentAttendance = null;
+                loadAttendanceTab();
+            }
+        }
+
         function markAttendance(personId, status) {
             const currentWeek = getCurrentWeek();
             const person = people.find(p => p.id === personId);
 
-            // Verificar permisos semanales
             if (status === 'permission') {
                 if (!weeklyPermissions[currentWeek]) {
                     weeklyPermissions[currentWeek] = {};
@@ -507,7 +524,6 @@
 
             currentAttendance.records[personId] = status;
 
-            // Aplicar multa si es ausente
             if (status === 'absent') {
                 person.debt += 10;
             }
@@ -517,10 +533,23 @@
             updateAttendanceStats();
         }
 
+        function loadAttendanceTab() {
+            const listContainer = document.getElementById('attendanceList');
+            
+            if (!currentAttendance || Object.keys(currentAttendance.records).length === 0) {
+                listContainer.innerHTML = '<div class="empty-state">Inicia un pase de lista para comenzar</div>';
+                document.getElementById('presentCount').textContent = '0';
+                document.getElementById('absentCount').textContent = '0';
+                return;
+            }
+
+            loadAttendanceList();
+        }
+
         function loadAttendanceList() {
             const listContainer = document.getElementById('attendanceList');
             
-            if (!currentAttendance.records) {
+            if (!currentAttendance || Object.keys(currentAttendance.records).length === 0) {
                 listContainer.innerHTML = '<div class="empty-state">Inicia un pase de lista para comenzar</div>';
                 return;
             }
@@ -564,7 +593,7 @@
         }
 
         function updateAttendanceStats() {
-            if (!currentAttendance.records) return;
+            if (!currentAttendance) return;
 
             const present = Object.values(currentAttendance.records).filter(status => status === 'present').length;
             const absent = Object.values(currentAttendance.records).filter(status => status === 'absent').length;
@@ -574,7 +603,7 @@
         }
 
         function shareAttendance() {
-            if (!currentAttendance.records) {
+            if (!currentAttendance || Object.keys(currentAttendance.records).length === 0) {
                 alert('Primero debes realizar un pase de lista');
                 return;
             }
@@ -600,130 +629,635 @@
                 }
             });
 
-            if (present.length > 0) {
-                message += `✅ *Presentes (${present.length}):*\n${present.join('\n')}\n\n`;
+   <!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pase de Lista Mejorado</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 10px;
+        }
+
+        .container {
+            max-width: 100%;
+            width: 400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .tabs {
+            display: flex;
+            background: #f8f9fa;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 15px 10px;
+            text-align: center;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .tab.active {
+            background: white;
+            color: #4facfe;
+            border-bottom: 3px solid #4facfe;
+        }
+
+        .tab-content {
+            display: none;
+            padding: 20px;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #4facfe;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(79, 172, 254, 0.4);
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-warning {
+            background: #ffc107;
+            color: #212529;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+        }
+
+        .person-list {
+            margin-top: 20px;
+        }
+
+        .person-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            margin-bottom: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #4facfe;
+        }
+
+        .person-name {
+            font-weight: 500;
+        }
+
+        .person-actions {
+            display: flex;
+            gap: 5px;
+        }
+
+        .person-actions button {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            min-width: 60px;
+        }
+
+        .attendance-item {
+            padding: 15px;
+            margin-bottom: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #28a745;
+        }
+
+        .attendance-present {
+            border-left-color: #28a745;
+        }
+
+        .attendance-absent {
+            border-left-color: #dc3545;
+        }
+
+        .attendance-permission {
+            border-left-color: #ffc107;
+        }
+
+        .debt-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            margin-bottom: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #dc3545;
+        }
+
+        .debt-amount {
+            font-weight: bold;
+            color: #dc3545;
+        }
+
+        .date-info {
+            font-size: 12px;
+            color: #6c757d;
+            margin-bottom: 5px;
+        }
+
+        .summary-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+
+        .alert {
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .alert-warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 30px;
+            color: #6c757d;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                margin: 0;
+                border-radius: 0;
+                min-height: 100vh;
             }
-
-            if (permissions.length > 0) {
-                message += `📝 *Con Permiso (${permissions.length}):*\n${permissions.join('\n')}\n\n`;
+            
+            .person-actions {
+                flex-direction: column;
+                gap: 3px;
             }
-
-            if (absent.length > 0) {
-                message += `❌ *Ausentes (${absent.length}):*\n${absent.join('\n')}\n\n`;
+            
+            .person-actions button {
+                font-size: 11px;
+                padding: 4px 8px;
             }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📋 Pase de Lista Mejorado</h1>
+            <p>Sistema de Control de Asistencia y Adeudos</p>
+        </div>
 
-            message += `💰 *Multas aplicadas:* $${absent.length * 10}`;
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('manage')">Gestionar</button>
+            <button class="tab" onclick="showTab('attendance')">Asistencia</button>
+            <button class="tab" onclick="showTab('debts')">Adeudos</button>
+            <button class="tab" onclick="showTab('history')">Historial</button>
+        </div>
 
-            // Guardar en historial
-            attendanceHistory.push({
-                ...currentAttendance,
-                timestamp: new Date().toISOString()
+        <!-- Tab: Gestionar Personas -->
+        <div id="manage" class="tab-content active">
+            <div class="input-group">
+                <label for="personName">Agregar Nueva Persona:</label>
+                <input type="text" id="personName" placeholder="Nombre completo">
+            </div>
+            <button class="btn btn-primary" onclick="addPerson()">➕ Agregar Persona</button>
+            
+            <div class="person-list" id="personList">
+                <!-- Personas se cargan aquí -->
+            </div>
+        </div>
+
+        <!-- Tab: Pase de Asistencia -->
+        <div id="attendance" class="tab-content">
+            <div class="summary-stats" id="attendanceStats">
+                <div class="stat-card">
+                    <div class="stat-number" id="presentCount">0</div>
+                    <div class="stat-label">Presentes</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="absentCount">0</div>
+                    <div class="stat-label">Ausentes</div>
+                </div>
+            </div>
+            
+            <button class="btn btn-primary" onclick="startAttendance()">📝 Iniciar Pase de Lista</button>
+            <button class="btn btn-info" onclick="shareAttendance()">📤 Compartir por WhatsApp</button>
+            <button class="btn btn-danger" onclick="finishAttendance()">🏁 Finalizar Lista</button>
+            
+            <div id="attendanceList">
+                <!-- Lista de asistencia se carga aquí -->
+            </div>
+        </div>
+
+        <!-- Tab: Adeudos -->
+        <div id="debts" class="tab-content">
+            <div class="summary-stats">
+                <div class="stat-card">
+                    <div class="stat-number" id="totalDebt">$0</div>
+                    <div class="stat-label">Total Adeudos</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="debtorsCount">0</div>
+                    <div class="stat-label">Personas con Deuda</div>
+                </div>
+            </div>
+            
+            <button class="btn btn-info" onclick="shareDebts()">📤 Compartir Adeudos</button>
+            
+            <div id="debtsList">
+                <!-- Lista de adeudos se carga aquí -->
+            </div>
+        </div>
+
+        <!-- Tab: Historial -->
+        <div id="history" class="tab-content">
+            <button class="btn btn-danger" onclick="clearAllData()" style="margin-bottom: 15px;">🗑️ Limpiar Todo</button>
+            
+            <div id="historyList">
+                <!-- Historial se carga aquí -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Variables globales mejoradas
+        let people = JSON.parse(localStorage.getItem('people') || '[]');
+        let attendanceHistory = JSON.parse(localStorage.getItem('attendanceHistory') || [];
+        let currentAttendance = null; // Cambiado de {} a null para mejor control
+        let weeklyPermissions = JSON.parse(localStorage.getItem('weeklyPermissions') || '{}');
+
+        // Funciones de utilidad mejoradas
+        function saveData() {
+            localStorage.setItem('people', JSON.stringify(people));
+            localStorage.setItem('attendanceHistory', JSON.stringify(attendanceHistory));
+            localStorage.setItem('weeklyPermissions', JSON.stringify(weeklyPermissions));
+        }
+
+        // Función de semana ISO mejorada
+        function getCurrentWeek() {
+            const date = new Date();
+            date.setHours(0, 0, 0, 0);
+            date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
+            const week1 = new Date(date.getFullYear(), 0, 4);
+            const weekNumber = 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+            
+            return `${date.getFullYear()}-W${weekNumber.toString().padStart(2, '0')}`;
+        }
+
+        function getCurrentDate() {
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            return new Date().toLocaleDateString('es-ES', options);
+        }
+
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
             });
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+
+            switch(tabName) {
+                case 'manage':
+                    loadPeopleList();
+                    break;
+                case 'attendance':
+                    loadAttendanceTab();
+                    break;
+                case 'debts':
+                    loadDebtsTab();
+                    break;
+                case 'history':
+                    loadHistoryTab();
+                    break;
+            }
+        }
+
+        // Gestión de personas
+        function addPerson() {
+            const nameInput = document.getElementById('personName');
+            const name = nameInput.value.trim();
+
+            if (name === '') {
+                alert('Por favor ingresa un nombre');
+                return;
+            }
+
+            if (people.some(person => person.name.toLowerCase() === name.toLowerCase())) {
+                alert('Esta persona ya existe en la lista');
+                return;
+            }
+
+            people.push({
+                id: Date.now(),
+                name: name,
+                debt: 0
+            });
+
             saveData();
-
-            // Compartir por WhatsApp
-            const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
-            window.open(whatsappUrl, '_blank');
+            nameInput.value = '';
+            loadPeopleList();
         }
 
-        // Gestión de adeudos
-        function loadDebtsTab() {
-            const listContainer = document.getElementById('debtsList');
-            const debtors = people.filter(person => person.debt > 0);
-
-            if (debtors.length === 0) {
-                listContainer.innerHTML = '<div class="empty-state">No hay adeudos pendientes</div>';
-            } else {
-                listContainer.innerHTML = debtors.map(person => `
-                    <div class="debt-item">
-                        <span class="person-name">${person.name}</span>
-                        <span class="debt-amount">$${person.debt}</span>
-                    </div>
-                `).join('');
+        function removePerson(id) {
+            if (confirm('¿Estás seguro de eliminar esta persona y todos sus registros?')) {
+                people = people.filter(person => person.id !== id);
+                attendanceHistory = attendanceHistory.map(record => {
+                    delete record.records[id];
+                    return record;
+                });
+                saveData();
+                loadPeopleList();
             }
-
-            // Actualizar estadísticas
-            const totalDebt = people.reduce((sum, person) => sum + person.debt, 0);
-            document.getElementById('totalDebt').textContent = `$${totalDebt}`;
-            document.getElementById('debtorsCount').textContent = debtors.length;
         }
 
-        function shareDebts() {
-            const debtors = people.filter(person => person.debt > 0);
+        function loadPeopleList() {
+            const listContainer = document.getElementById('personList');
             
-            if (debtors.length === 0) {
-                alert('No hay adeudos para compartir');
+            if (people.length === 0) {
+                listContainer.innerHTML = '<div class="empty-state">No hay personas registradas</div>';
                 return;
             }
 
-            let message = `💰 *Reporte de Adeudos*\n\n`;
+            listContainer.innerHTML = people.map(person => `
+                <div class="person-item">
+                    <span class="person-name">${person.name}</span>
+                    <div class="person-actions">
+                        <button class="btn-danger" onclick="removePerson(${person.id})">Eliminar</button>
+                    </div>
+                </div>
+            `).join('');
+        }
 
-            debtors.forEach(person => {
-                message += `👤 ${person.name}: $${person.debt}\n`;
+        // Pase de asistencia mejorado
+        function startAttendance() {
+            if (people.length === 0) {
+                alert('Primero debes agregar personas a la lista');
+                return;
+            }
+
+            if (currentAttendance && Object.keys(currentAttendance.records).length > 0) {
+                if (!confirm('Hay un pase de lista en progreso. ¿Deseas iniciar uno nuevo?')) {
+                    return;
+                }
+            }
+
+            currentAttendance = {
+                date: getCurrentDate(),
+                records: {}
+            };
+
+            people.forEach(person => {
+                currentAttendance.records[person.id] = null;
             });
 
-            const totalDebt = people.reduce((sum, person) => sum + person.debt, 0);
-            message += `\n💳 *Total General: $${totalDebt}*`;
-
-            const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
-            window.open(whatsappUrl, '_blank');
+            loadAttendanceList();
         }
 
-        // Historial
-        function loadHistoryTab() {
-            const listContainer = document.getElementById('historyList');
+        function finishAttendance() {
+            if (!currentAttendance || Object.keys(currentAttendance.records).length === 0) {
+                alert('No hay pase de lista activo para finalizar');
+                return;
+            }
             
-            if (attendanceHistory.length === 0) {
-                listContainer.innerHTML = '<div class="empty-state">No hay historial disponible</div>';
+            if (confirm('¿Finalizar el pase de lista actual?')) {
+                currentAttendance = null;
+                loadAttendanceTab();
+            }
+        }
+
+        function markAttendance(personId, status) {
+            const currentWeek = getCurrentWeek();
+            const person = people.find(p => p.id === personId);
+
+            if (status === 'permission') {
+                if (!weeklyPermissions[currentWeek]) {
+                    weeklyPermissions[currentWeek] = {};
+                }
+
+                if (weeklyPermissions[currentWeek][personId]) {
+                    alert(`${person.name} ya usó su permiso esta semana. Se marcará como ausente.`);
+                    status = 'absent';
+                } else {
+                    weeklyPermissions[currentWeek][personId] = true;
+                }
+            }
+
+            currentAttendance.records[personId] = status;
+
+            if (status === 'absent') {
+                person.debt += 10;
+            }
+
+            saveData();
+            loadAttendanceList();
+            updateAttendanceStats();
+        }
+
+        function loadAttendanceTab() {
+            const listContainer = document.getElementById('attendanceList');
+            
+            if (!currentAttendance || Object.keys(currentAttendance.records).length === 0) {
+                listContainer.innerHTML = '<div class="empty-state">Inicia un pase de lista para comenzar</div>';
+                document.getElementById('presentCount').textContent = '0';
+                document.getElementById('absentCount').textContent = '0';
                 return;
             }
 
-            listContainer.innerHTML = attendanceHistory.slice().reverse().map(record => {
-                const present = Object.values(record.records).filter(status => status === 'present').length;
-                const absent = Object.values(record.records).filter(status => status === 'absent').length;
-                const permissions = Object.values(record.records).filter(status => status === 'permission').length;
+            loadAttendanceList();
+        }
+
+        function loadAttendanceList() {
+            const listContainer = document.getElementById('attendanceList');
+            
+            if (!currentAttendance || Object.keys(currentAttendance.records).length === 0) {
+                listContainer.innerHTML = '<div class="empty-state">Inicia un pase de lista para comenzar</div>';
+                return;
+            }
+
+            listContainer.innerHTML = people.map(person => {
+                const status = currentAttendance.records[person.id];
+                let statusClass = '';
+                let statusText = 'Sin marcar';
+
+                switch(status) {
+                    case 'present':
+                        statusClass = 'attendance-present';
+                        statusText = '✅ Presente';
+                        break;
+                    case 'absent':
+                        statusClass = 'attendance-absent';
+                        statusText = '❌ Ausente';
+                        break;
+                    case 'permission':
+                        statusClass = 'attendance-permission';
+                        statusText = '📝 Permiso';
+                        break;
+                }
 
                 return `
-                    <div class="attendance-item">
-                        <div class="date-info">${record.date}</div>
+                    <div class="attendance-item ${statusClass}">
                         <div>
-                            <strong>Presentes:</strong> ${present} | 
-                            <strong>Ausentes:</strong> ${absent} | 
-                            <strong>Permisos:</strong> ${permissions}
+                            <strong>${person.name}</strong>
+                            <div class="date-info">${statusText}</div>
                         </div>
-                        <div class="date-info">Multas: $${absent * 10}</div>
+                        <div class="person-actions">
+                            <button class="btn-success" onclick="markAttendance(${person.id}, 'present')">Presente</button>
+                            <button class="btn-danger" onclick="markAttendance(${person.id}, 'absent')">Ausente</button>
+                            <button class="btn-warning" onclick="markAttendance(${person.id}, 'permission')">Permiso</button>
+                        </div>
                     </div>
                 `;
             }).join('');
+
+            updateAttendanceStats();
         }
 
-        function clearAllData() {
-            if (confirm('¿Estás seguro de eliminar todos los datos? Esta acción no se puede deshacer.')) {
-                localStorage.clear();
-                people = [];
-                attendanceHistory = [];
-                weeklyPermissions = {};
-                currentAttendance = {};
-                
-                loadPeopleList();
-                alert('Todos los datos han sido eliminados');
+        function updateAttendanceStats() {
+            if (!currentAttendance) return;
+
+            const present = Object.values(currentAttendance.records).filter(status => status === 'present').length;
+            const absent = Object.values(currentAttendance.records).filter(status => status === 'absent').length;
+
+            document.getElementById('presentCount').textContent = present;
+            document.getElementById('absentCount').textContent = absent;
+        }
+
+        function shareAttendance() {
+            if (!currentAttendance || Object.keys(currentAttendance.records).length === 0) {
+                alert('Primero debes realizar un pase de lista');
+                return;
             }
-        }
 
-        // Inicialización
-        function init() {
-            loadPeopleList();
-            
-            // Event listener para Enter en el input de nombre
-            document.getElementById('personName').addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
-                    addPerson();
+            let message = `📋 *Pase de Lista - ${currentAttendance.date}*\n\n`;
+
+            const present = [];
+            const absent = [];
+            const permissions = [];
+
+            people.forEach(person => {
+                const status = currentAttendance.records[person.id];
+                switch(status) {
+                    case 'present':
+                        present.push(person.name);
+                        break;
+                    case 'absent':
+                        absent.push(person.name);
+                        break;
+                    case 'permission':
+                        permissions.push(person.name);
+                        break;
                 }
             });
-        }
 
-        // Cargar al iniciar
-        document.addEventListener('DOMContentLoaded', init);
-    </script>
-</body>
-</html>
+   
