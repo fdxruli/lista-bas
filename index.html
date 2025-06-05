@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pase de Lista Mejorado</title>
+    <title>Pase de Lista</title>
     <style>
         * {
             margin: 0;
@@ -279,8 +279,8 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>📋 Pase de Lista Mejorado</h1>
-            <p>Sistema de Control de Asistencia y Adeudos</p>
+            <h1>📋 Pase de Lista</h1>
+            <p>Sistema de Control de Asistencia</p>
         </div>
 
         <div class="tabs">
@@ -318,7 +318,6 @@
             
             <button class="btn btn-primary" onclick="startAttendance()">📝 Iniciar Pase de Lista</button>
             <button class="btn btn-info" onclick="shareAttendance()">📤 Compartir por WhatsApp</button>
-            <button class="btn btn-danger" onclick="finishAttendance()">🏁 Finalizar Lista</button>
             
             <div id="attendanceList">
                 <!-- Lista de asistencia se carga aquí -->
@@ -356,36 +355,32 @@
     </div>
 
     <script>
-        // Variables globales mejoradas
+        // Variables globales
         let people = JSON.parse(localStorage.getItem('people') || '[]');
-        let attendanceHistory = JSON.parse(localStorage.getItem('attendanceHistory') || '[]'); // Corregido: era [] sin comillas
-        let currentAttendance = null;
+        let attendanceHistory = JSON.parse(localStorage.getItem('attendanceHistory') || '[]');
+        let currentAttendance = {};
         let weeklyPermissions = JSON.parse(localStorage.getItem('weeklyPermissions') || '{}');
 
-        // Funciones de utilidad mejoradas
+        // Funciones de utilidad
         function saveData() {
             localStorage.setItem('people', JSON.stringify(people));
             localStorage.setItem('attendanceHistory', JSON.stringify(attendanceHistory));
             localStorage.setItem('weeklyPermissions', JSON.stringify(weeklyPermissions));
         }
 
-        // Función de semana ISO mejorada
         function getCurrentWeek() {
-            const date = new Date();
-            date.setHours(0, 0, 0, 0);
-            date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
-            const week1 = new Date(date.getFullYear(), 0, 4);
-            const weekNumber = 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
-            
-            return `${date.getFullYear()}-W${weekNumber.toString().padStart(2, '0')}`;
+            const now = new Date();
+            const year = now.getFullYear();
+            const week = Math.ceil(((now - new Date(year, 0, 1)) / 86400000 + new Date(year, 0, 1).getDay() + 1) / 7);
+            return `${year}-W${week}`;
         }
 
         function getCurrentDate() {
-            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-            return new Date().toLocaleDateString('es-ES', options);
+            return new Date().toLocaleDateString('es-ES');
         }
 
         function showTab(tabName) {
+            // Ocultar todos los tabs
             document.querySelectorAll('.tab-content').forEach(tab => {
                 tab.classList.remove('active');
             });
@@ -393,9 +388,11 @@
                 tab.classList.remove('active');
             });
 
+            // Mostrar tab seleccionado
             document.getElementById(tabName).classList.add('active');
             event.target.classList.add('active');
 
+            // Actualizar contenido según el tab
             switch(tabName) {
                 case 'manage':
                     loadPeopleList();
@@ -436,15 +433,12 @@
             saveData();
             nameInput.value = '';
             loadPeopleList();
+            alert('Persona agregada exitosamente');
         }
 
         function removePerson(id) {
-            if (confirm('¿Estás seguro de eliminar esta persona y todos sus registros?')) {
+            if (confirm('¿Estás seguro de eliminar esta persona?')) {
                 people = people.filter(person => person.id !== id);
-                attendanceHistory = attendanceHistory.map(record => {
-                    delete record.records[id];
-                    return record;
-                });
                 saveData();
                 loadPeopleList();
             }
@@ -468,17 +462,11 @@
             `).join('');
         }
 
-        // Pase de asistencia mejorado
+        // Pase de asistencia
         function startAttendance() {
             if (people.length === 0) {
                 alert('Primero debes agregar personas a la lista');
                 return;
-            }
-
-            if (currentAttendance && Object.keys(currentAttendance.records).length > 0) {
-                if (!confirm('Hay un pase de lista en progreso. ¿Deseas iniciar uno nuevo?')) {
-                    return;
-                }
             }
 
             currentAttendance = {
@@ -493,29 +481,11 @@
             loadAttendanceList();
         }
 
-        function finishAttendance() {
-            if (!currentAttendance || Object.keys(currentAttendance.records).length === 0) {
-                alert('No hay pase de lista activo para finalizar');
-                return;
-            }
-            
-            if (confirm('¿Finalizar el pase de lista actual?')) {
-                // Guardar en historial antes de limpiar
-                attendanceHistory.push({
-                    ...currentAttendance,
-                    timestamp: new Date().toISOString()
-                });
-                saveData();
-                
-                currentAttendance = null;
-                loadAttendanceTab();
-            }
-        }
-
         function markAttendance(personId, status) {
             const currentWeek = getCurrentWeek();
             const person = people.find(p => p.id === personId);
 
+            // Verificar permisos semanales
             if (status === 'permission') {
                 if (!weeklyPermissions[currentWeek]) {
                     weeklyPermissions[currentWeek] = {};
@@ -531,6 +501,7 @@
 
             currentAttendance.records[personId] = status;
 
+            // Aplicar multa si es ausente
             if (status === 'absent') {
                 person.debt += 10;
             }
@@ -540,23 +511,10 @@
             updateAttendanceStats();
         }
 
-        function loadAttendanceTab() {
-            const listContainer = document.getElementById('attendanceList');
-            
-            if (!currentAttendance || Object.keys(currentAttendance.records).length === 0) {
-                listContainer.innerHTML = '<div class="empty-state">Inicia un pase de lista para comenzar</div>';
-                document.getElementById('presentCount').textContent = '0';
-                document.getElementById('absentCount').textContent = '0';
-                return;
-            }
-
-            loadAttendanceList();
-        }
-
         function loadAttendanceList() {
             const listContainer = document.getElementById('attendanceList');
             
-            if (!currentAttendance || Object.keys(currentAttendance.records).length === 0) {
+            if (!currentAttendance.records) {
                 listContainer.innerHTML = '<div class="empty-state">Inicia un pase de lista para comenzar</div>';
                 return;
             }
@@ -600,7 +558,7 @@
         }
 
         function updateAttendanceStats() {
-            if (!currentAttendance) return;
+            if (!currentAttendance.records) return;
 
             const present = Object.values(currentAttendance.records).filter(status => status === 'present').length;
             const absent = Object.values(currentAttendance.records).filter(status => status === 'absent').length;
@@ -610,7 +568,7 @@
         }
 
         function shareAttendance() {
-            if (!currentAttendance || Object.keys(currentAttendance.records).length === 0) {
+            if (!currentAttendance.records) {
                 alert('Primero debes realizar un pase de lista');
                 return;
             }
@@ -627,4 +585,57 @@
                     case 'present':
                         present.push(person.name);
                         break;
-                    case 
+                    case 'absent':
+                        absent.push(person.name);
+                        break;
+                    case 'permission':
+                        permissions.push(person.name);
+                        break;
+                }
+            });
+
+            if (present.length > 0) {
+                message += `✅ *Presentes (${present.length}):*\n${present.join('\n')}\n\n`;
+            }
+
+            if (permissions.length > 0) {
+                message += `📝 *Con Permiso (${permissions.length}):*\n${permissions.join('\n')}\n\n`;
+            }
+
+            if (absent.length > 0) {
+                message += `❌ *Ausentes (${absent.length}):*\n${absent.join('\n')}\n\n`;
+            }
+
+            message += `💰 *Multas aplicadas:* $${absent.length * 10}`;
+
+            // Guardar en historial
+            attendanceHistory.push({
+                ...currentAttendance,
+                timestamp: new Date().toISOString()
+            });
+            saveData();
+
+            // Compartir por WhatsApp
+            const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+            window.open(whatsappUrl, '_blank');
+        }
+
+        // Gestión de adeudos
+        function loadDebtsTab() {
+            const listContainer = document.getElementById('debtsList');
+            const debtors = people.filter(person => person.debt > 0);
+
+            if (debtors.length === 0) {
+                listContainer.innerHTML = '<div class="empty-state">No hay adeudos pendientes</div>';
+            } else {
+                listContainer.innerHTML = debtors.map(person => `
+                    <div class="debt-item">
+                        <span class="person-name">${person.name}</span>
+                        <span class="debt-amount">$${person.debt}</span>
+                    </div>
+                `).join('');
+            }
+
+            // Actualizar estadísticas
+            const totalDebt = people.reduce((sum, person) => sum + person.debt, 0);
+            document.getElementById('totalDebt').textContent = `$${totalDebt}`;
