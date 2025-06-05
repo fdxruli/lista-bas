@@ -369,10 +369,16 @@
         }
 
         function getCurrentWeek() {
-            const now = new Date();
-            const year = now.getFullYear();
-            const week = Math.ceil(((now - new Date(year, 0, 1)) / 86400000 + new Date(year, 0, 1).getDay() + 1) / 7);
-            return `${year}-W${week}`;
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    // Thursday in current week decides the year (ISO 8601)
+    date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
+    // January 4 is always in week 1
+    const week1 = new Date(date.getFullYear(), 0, 4);
+    // Adjust to Thursday in week 1 and count number of weeks
+    const weekNumber = 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+    
+    return `${date.getFullYear()}-W${weekNumber.toString().padStart(2, '0')}`;
         }
 
         function getCurrentDate() {
